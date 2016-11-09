@@ -36,7 +36,7 @@
 #define BUFFER_LENGTH			256
 
 
-#define INTERVAL_40MS			2 * 1000
+#define INTERVAL_2MS			2 * 1000
 #define INTERVAL_50MS			50 * 1000
 
 
@@ -55,16 +55,16 @@ unsigned int g_ui_mode;
 
 // For Basic Initialization
 int Master_Node = 17;
-int timer_counter1 = 0;
-int timer_counter2 = 0;
+unsigned int timer_counter1 = 0;
+unsigned int timer_counter2 = 0;
 
 // For Timer
 timer_t first_timer;
 timer_t second_timer;
 timer_t third_timer;
 
-struct timespec g_timer005 = {0, 0};
-struct timespec g_timer004 = {0, 0};
+struct timespec g_timer050 = {0, 0};
+struct timespec g_timer002 = {0, 0};
 
 
 // For Pipe
@@ -129,26 +129,26 @@ static void *pth_CommFunc()
 static void *pth_macTask1Func()
 {
     int time_interval;
-    struct timespec timer_005;
+    struct timespec timer_050;
 
 
     do {
         //printf("Thread 2 ..............................................\r\n");
         // Clock check for 0.05s interval
-        clock_gettime(CLOCK_REALTIME, &timer_005);
-        if (timer_005.tv_sec >= g_timer005.tv_sec) {
-            time_interval = 1000000 * (timer_005.tv_sec - g_timer005.tv_sec);
-            time_interval -= (g_timer005.tv_nsec / 1000);
-            time_interval += (timer_005.tv_nsec / 1000);
+        clock_gettime(CLOCK_REALTIME, &timer_050);
+        if (timer_050.tv_sec >= g_timer050.tv_sec) {
+            time_interval = 1000000 * (timer_050.tv_sec - g_timer050.tv_sec);
+            time_interval -= (g_timer050.tv_nsec / 1000);
+            time_interval += (timer_050.tv_nsec / 1000);
         }
         else {
-            time_interval = (int)(timer_005.tv_nsec / 1000 - g_timer005.tv_nsec / 1000);
+            time_interval = (int)(timer_050.tv_nsec / 1000 - g_timer050.tv_nsec / 1000);
         }
         if (time_interval <= INTERVAL_50MS) {
             usleep(INTERVAL_50MS - time_interval);
         }
         // Backup time
-        clock_gettime(CLOCK_REALTIME, &g_timer005);
+        clock_gettime(CLOCK_REALTIME, &g_timer050);
         // Run related work
         tdt_dataprodTask();
         if (++ timer_counter2 == 11) {
@@ -172,34 +172,60 @@ static void *pth_macTask1Func()
 ////////////////////////////////////////////////////////////////////
 static void *pth_macTask2Func()
 {
-    int time_interval;
-    struct timespec timer_004;
+    int sync_delay_in_ms, slot_time_in_sec, slot_time_in_msec;
+    int slot_time_in_ms, accu_time_in_ms;
+    struct timespec timer_sync;
+    struct timespec timer_002;
+    
 
+    // Here is used to confirm that the timer slot start from the beginning of each slot time
+    sync_delay_in_ms = 0;
+    accu_time_in_ms = 0;
+    slot_time_in_ms = tdt_getSlotCounter() * 2;
+    slot_time_in_sec = slot_time_in_ms / 1000;
+    slot_time_in_msec = (slot_time_in_ms) % 1000;
+    clock_gettime(CLOCK_REALTIME, &timer_sync);
+    if (slot_time_in_sec != 0) {
+        sync_delay_in_ms = (timer_sync.tv_sec % slot_time_in_sec)  * 1000;
+    }
+    if (slot_time_in_msec != 0) {
+        sync_delay_in_ms += ((timer_sync.tv_nsec / 1000000) % slot_time_in_msec);  
+    }
+    else {
+        sync_delay_in_ms += timer_sync.tv_nsec / 1000000;
+    }
+    sync_delay_in_ms = slot_time_in_ms - sync_delay_in_ms;
+
+    usleep(sync_delay_in_ms * 1000);
+    //printf("********Right now, the time is %ds:%dms, delay is needed for %dms.", timer_sync.tv_sec, (timer_sync.tv_nsec / 1000000), sync_delay_in_ms);
+
+    clock_gettime(CLOCK_REALTIME, &timer_sync);
     do {
         //printf("Thread 3 ................................................................\r\n");
-        // Clock check for 40ms interval;
-        clock_gettime(CLOCK_REALTIME, &timer_004);
-        if (timer_004.tv_sec >= g_timer004.tv_sec) {
-            time_interval = 1000000 * (timer_004.tv_sec - g_timer004.tv_sec);
-            time_interval -= (g_timer004.tv_nsec / 1000);
-            time_interval += (timer_004.tv_nsec / 1000);
+        usleep(INTERVAL_2MS);
+        tdt_notifyTask();
+        
+        clock_gettime(CLOCK_REALTIME, &timer_002);
+        accu_time_in_ms = (timer_002.tv_sec - timer_sync.tv_sec) * 1000;
+        if (timer_002.tv_nsec < timer_sync.tv_nsec) {
+            accu_time_in_ms += (timer_002.tv_nsec / 1000000);
+            accu_time_in_ms -= (timer_sync.tv_nsec / 1000000);
         }
         else {
-            time_interval = (int)(timer_004.tv_nsec / 1000 - g_timer004.tv_nsec / 1000);
+            accu_time_in_ms += ((timer_002.tv_nsec - timer_sync.tv_nsec) / 1000000);
         }
-        if (time_interval <= INTERVAL_40MS) {
-            usleep(INTERVAL_40MS - time_interval);
-        }
-        // Backup Timer
-        clock_gettime(CLOCK_REALTIME, &g_timer004);
-        // Run related work
-        tdt_notifyTask();
-        if (++ timer_counter1 == 400) {
-            //printf("run tdt_pingTask.................................\r\n");
+        
+        if (accu_time_in_ms >= slot_time_in_ms) {
             tdt_pingTask();
             tdt_txTask();
-            timer_counter1 = 0;
+            //timer_sync.tv_sec = timer_002.tv_sec;
+            //timer_sync.tv_nsec = timer_002.tv_nsec;
+            timer_sync.tv_sec += slot_time_in_ms / 1000;
+            timer_sync.tv_nsec += (slot_time_in_ms % 1000) * 1000000;
+            //printf("############### Slot time is %dms. Now tdt_txTask, the sync time is %ds : %dms, the ref time is %ds : %dms. ##################\r\n", 
+            //            slot_time_in_ms, timer_sync.tv_sec, timer_sync.tv_nsec / 1000000, timer_002.tv_sec, timer_002.tv_nsec / 1000000);
         }
+
     } while (1);
 
 
@@ -223,7 +249,7 @@ int main(int argc, char* argv[])
 {
     int i, error, ret, macPara, masterPara;
     char txPara, pingPara, xidPara;
-    float packetratePara;
+    float packetratePara, slotPara;
     void *status;
     struct sched_param param;
 
@@ -245,6 +271,8 @@ int main(int argc, char* argv[])
     packetratePara = 0.004;
     // Master Node: If it equals local address of Modem, it is Master Node
     masterPara = 17;
+    // Time of slot in second
+    slotPara = 2.0;
 
     // Arguments input to support parameter input from the command line
     if (argc > 1) {
@@ -273,9 +301,13 @@ int main(int argc, char* argv[])
                 masterPara = (char)atoi(argv[i + 1]);
                 printf("Master Node is 0x%x.\r\n", masterPara);
             }
+            else if (strcmp(argv[i], "-slot") == 0) {
+                slotPara = atof(argv[i + 1]);
+                printf("Slot time is %f second.\r\n", slotPara);
+            }
             else {
                 printf("Help: example...\r\n");
-                printf("        macComm -protocol 4 -packetrate 0.02 -txenable 0 -pingenable 0 -xid 8 -master 17\r\n");
+                printf("        macComm -protocol 4 -packetrate 0.02 -txenable 0 -pingenable 0 -xid 8 -master 17 -slot 2.0\r\n");
                 return 0;
             }
         }
@@ -288,12 +320,12 @@ int main(int argc, char* argv[])
     // Initialize global time and counter
     timer_counter1 = 0;
     timer_counter2 = 0;
-    clock_gettime(CLOCK_REALTIME, &g_timer004);
-    clock_gettime(CLOCK_REALTIME, &g_timer005);
+    clock_gettime(CLOCK_REALTIME, &g_timer002);
+    clock_gettime(CLOCK_REALTIME, &g_timer050);
     // Initialize Modem
     tdt_autoPing(1);
     tdt_autoSync(1);
-    tdt_modemInit(macPara, txPara, pingPara, xidPara, packetratePara, masterPara);
+    tdt_modemInit(macPara, txPara, pingPara, xidPara, packetratePara, masterPara, slotPara);
 
 
     printf("Start the threads.....\r\n");

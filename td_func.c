@@ -341,6 +341,13 @@ unsigned int td_get(char* get_request, char ID)
         tx_pkt.field[0] = 0;
         tx_pkt.len[0] = 0;
     }
+    else if (strcmp(get_request, "dataAcks") == 0) {
+        printf("td_get, Command: dataAcks.\r\n");
+        tx_pkt.numParam = 1;
+        tx_pkt.subsys[0] = 67;
+        tx_pkt.field[0] = 13;
+        tx_pkt.len[0] = 0;
+    }
     else if (strcmp(get_request, "dataRetrans") == 0) {
         printf("td_get, Command: dataRetrans.\r\n");
         tx_pkt.numParam = 1;

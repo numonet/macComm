@@ -41,8 +41,8 @@ struct def_Ping_queue {
     char subsys;
     char field;
     char length[2];
-    char message[32];
-    char signature[32];
+    char message[64];
+    char signature[64];
 };
 
 
@@ -64,8 +64,8 @@ struct def_Tx_queue {
     char Buffer_len;
     char roffset;
     char woffset;
-    char payload[32][32];
-    char Buffer_payload[32][32];
+    char payload[32][64];
+    char Buffer_payload[32][64];
     int Buffer_Retries[32];
     int Buffer_time[32];
     int Buffer_flag[32];
@@ -113,13 +113,14 @@ struct def_TimerCounter {
 
 
 
-unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char xid__, float packetRate, char masterAddr);
+unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char xid__, float packetRate, char masterAddr, float slotTime);
 unsigned int tdt_txTask(void);
 unsigned int tdt_pingTask(void);
 unsigned int tdt_notifyTask(void);
 unsigned int tdt_qmonitorTask(void);
 unsigned int tdt_dataprodTask(void);
 unsigned int tdt_doSync(void);
+unsigned int tdt_getSlotCounter(void);
 
 
 unsigned int tdt_txEnable(char enable);

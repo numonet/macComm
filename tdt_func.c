@@ -83,7 +83,7 @@ static float				clock_diff = 0;
 static float				packet_rate = 0.04;
 static float				T_packet = 1.8;
 static float				P_ALOHA	= 0.25;
-static float				T_slot = 2;
+static float				T_slot = 2.0;
 static char				Tx_Enable = 0;
 static char				Master_node = 17;
 static char				XID = 13;
@@ -642,7 +642,10 @@ static unsigned int tdt_notify_to_file(void* dataPacket, char type)
             len = sprintf(logptr, "  message len: %d\n", pmPkt->len[i]);
             logptr += len;
             total += len;
-            len = sprintf(logptr, "  message: %s\n", pmPkt->message[i]);
+            len = sprintf(logptr, "  message: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x.\n", 
+                                             (pmPkt->message[i][0]), (pmPkt->message[i][1]),
+                                             (pmPkt->message[i][2]), (pmPkt->message[i][3]),
+                                             (pmPkt->message[i][4]), (pmPkt->message[i][5]));
             logptr += len;
             total += len;
         }
@@ -683,6 +686,7 @@ unsigned int tdt_doSync(void)
     char time_char[2], modemAddr[ADDRESS_BOOK_LEN], message[32];
     char* ptraddr;
 
+    ui_err = 0;
     memset(modemAddr, 0, sizeof(modemAddr));
     ptraddr = modemAddr;
     if (localAddr == Master_node) {
@@ -869,6 +873,7 @@ static unsigned int tdt_findMaxPktTime(int reftime, int* p_addrIndex, int* p_off
 //                      xid__:		XID
 //                      packetRate:	packet rate
 //			masterAddr:	Master address
+//                      slotTime:	the time of each slot
 //
 //        Output:
 //			NONE
@@ -878,7 +883,7 @@ static unsigned int tdt_findMaxPktTime(int reftime, int* p_addrIndex, int* p_off
 //			else:		Error
 //
 ////////////////////////////////////////////////////////////////////////
-unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char xid__, float packetRate, char masterAddr)
+unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char xid__, float packetRate, char masterAddr, float slotTime)
 {
     unsigned int i, ui_err = 0;
     char sniffer_mode, dataRetrans;
@@ -903,6 +908,8 @@ unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char
         ui_err = 1;
         printf("ACK and Retransmission initilzation error.\r\n");
     }
+    //tda_getAckMode(18, &ack_mode);
+
     // Initialize Global Variables
     Ping_queue_woffset = Ping_queue_roffset = 0;
     Tx_queue_Notify_woffset = Tx_queue_Notify_roffset = 0;
@@ -931,7 +938,7 @@ unsigned int tdt_modemInit(int macProtocol, char txEnable, char pingEnable, char
         P_ALOHA = 1/4;
     }
     else {
-        T_slot = 2;
+        T_slot = slotTime;
         P_ALOHA = 1/3;
     }
     
@@ -978,6 +985,18 @@ unsigned int tdt_syncTask(void)
 
     return flag;
 }
+
+
+unsigned int tdt_getSlotCounter(void)
+{
+    unsigned int counter;
+
+    counter = (int)((T_slot * 1000) / 2);
+
+
+    return counter;
+}
+
 
 
 
@@ -1377,7 +1396,7 @@ unsigned int tdt_pingTask(void)
         else if (strncmp(pPingqueue->signature, "00 03 03 00 00 04", 17) == 0) {
             state.Ping = state.Ping < 1 ? state.Ping : 1;
             tdt_addAddrToBook(pPingqueue->message, "Ping");
-            printf("**************************************Ping: working on ping - arrived.*******************************************\r\n");
+            printf("**************Ping: working on ping - arrived.***********************\r\n");
         }
         else {
             printf("Unknown signature.\r\n");
@@ -2015,15 +2034,16 @@ unsigned int tdt_dataCopy(char* data)
 {
     char* ptr;
     char nodeAddr;
-    int i, converter;
-    float hObject_StateTbl[8];
-
+    int i, converter, hObject_StateTbl[12];
+    //float hObject_StateTbl[12];
+    
 
     ptr = data;
     memset(hObject_StateTbl, 0, sizeof(hObject_StateTbl));
     // Protection Start ////////////////////////////////////////////////////////
     Com_MutexLock();
     nodeAddr = localAddr;
+#if 0
     hObject_StateTbl[0] = Q_empty[0].I;
     hObject_StateTbl[1] = Q_empty[1].I;
     hObject_StateTbl[2] = Q_empty[0].in;
@@ -2032,8 +2052,18 @@ unsigned int tdt_dataCopy(char* data)
     hObject_StateTbl[5] = Q_empty[1].out;
     hObject_StateTbl[6] = TARS_I;
     hObject_StateTbl[7] = optNodeProb_GUI;
+#endif
+    
     Com_MutexUnlock();
-    printf("Monitor data: %.4f, %.4f, %.4f, %.4f.\r\n", hObject_StateTbl[0], hObject_StateTbl[1], hObject_StateTbl[2], hObject_StateTbl[3]);
+    // Address Book Member 1
+    hObject_StateTbl[0] = Addr_book[0].address;
+    // Number of members in Address Book
+    hObject_StateTbl[1] = addrbook_counter;
+    // Tx Buffer Len
+    
+    printf("Monitor data: %d, %d, %d, %d, %d, %d.\r\n", hObject_StateTbl[0], hObject_StateTbl[1], 
+                                                        hObject_StateTbl[2], hObject_StateTbl[3], 
+                                                        hObject_StateTbl[4], hObject_StateTbl[5]);
     // Protection End /////////////////////////////////////////////////////////
     if (data != NULL) {
         ptr[0] = nodeAddr;

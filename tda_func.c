@@ -74,7 +74,7 @@ unsigned int tda_modemInit(void)
     memset(rbuffer, 0, sizeof(rbuffer));
     detected = loop = 0;
     // Uart 2
-    if (Com_Init(uart_dev, 9600, 8, 1, 'N') == 0) {
+    if (Com_Init(uart_dev, 115200, 8, 1, 'N') == 0) {
         Com_ConfigureTimeout(0);
 
             // Read log data if it outputs...
@@ -122,7 +122,31 @@ unsigned int tda_modemInit(void)
             Com_uSleep(100 * 1000);
             if (td_notify(&mpkt, 5, 200) == 0) {
                 if (mpkt.type == 'n') {
+                    printf("Get notification: subsys: %d, field: %d, message: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x.\r\n", 
+				mpkt.subsys[0], mpkt.field[0], mpkt.message[0][0], mpkt.message[0][1], mpkt.message[0][2],
+                                mpkt.message[0][3], mpkt.message[0][4], mpkt.message[0][5]);
                     printf("Get response correctly from Modem.\r\n");
+                    // ...
+                    if (td_get("rtsAttempts", 21) == 0) {
+                        Com_uSleep(100 * 1000);
+                        memset(&mpkt, 0, sizeof(struct modemPacket));
+                        if (td_notify(&mpkt, 5, 200) == 0) {
+                            printf("Get notification: subsys: %d, field: %d, message: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x.\r\n", 
+				mpkt.subsys[0], mpkt.field[0], mpkt.message[0][0], mpkt.message[0][1], mpkt.message[0][2],
+                                mpkt.message[0][3], mpkt.message[0][4], mpkt.message[0][5]);
+                            printf("*************************************************\r\n");
+                        }
+                        else {
+                            printf("td_notify error................................\r\n");
+                        }
+                    }
+                    else {
+                        printf("td_get error..................\r\n");
+                    }
+
+
+
+
                 }
                 else {
                     memset(&mpkt, 0, sizeof(struct modemPacket));
@@ -130,6 +154,9 @@ unsigned int tda_modemInit(void)
                     Com_uSleep(50 * 1000);
                     td_notify(&mpkt, 5, 200);
                     if (mpkt.type == 'n') {
+                        printf("Get notification: subsys: %d, field: %d, message: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x.\r\n", 
+				mpkt.subsys[0], mpkt.field[0], mpkt.message[0][0], mpkt.message[0][1], mpkt.message[0][2],
+                                mpkt.message[0][3], mpkt.message[0][4], mpkt.message[0][5]);
                         printf("Get response correctly from Modem.\r\n");
                     }       
                 }
@@ -258,6 +285,59 @@ unsigned int tda_getSnifferMode(char xid, char* sniffer_mode)
 
     return ui_err;
 }
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// Function Name:	tda_getAckMode
+//
+// Description:		It's used to get the ACK Mode from Modem
+//
+// Parameter:
+//        Input:
+//			xid:		XID field for Modem
+//        Output:
+//			ack_mode:	the ACK mode received
+//                                      
+//
+// Return Value:
+//			0:		OK
+//			else:		Error
+//
+////////////////////////////////////////////////////////////////////////
+unsigned int tda_getAckMode(char xid, char* ack_mode)
+{
+    unsigned int ui_err = 0;
+    struct modemPacket mpkt;
+
+
+    // Clear Uart input buffer
+    //Com_ClearRbuffer();
+    if (td_get("dataAcks", xid) == 0) {
+        Com_uSleep(50 * 1000);
+        if (td_notify(&mpkt, 5, 100) == 0) {
+            printf("ACK Mode data: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x.\r\n", mpkt.message[0][0],
+					mpkt.message[0][1], mpkt.message[0][2], mpkt.message[0][3], 
+					mpkt.message[0][4], mpkt.message[0][5]);
+            *ack_mode = mpkt.message[0][3];
+        }
+        else {
+            printf("Cannot get notify from Modem after sending sniffermode Command.\r\n");
+            ui_err = 2;
+        }
+    }
+    else {
+        printf("Cannot send sniffermode command to the Modem.\r\n");
+        ui_err = 1;
+    }
+
+
+    return ui_err;
+}
+
+
+
 
 
 /////////////////////////////////////////////////////////////////////////
